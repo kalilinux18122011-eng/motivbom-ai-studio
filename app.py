@@ -15,9 +15,8 @@ from aiohttp import web
 
 ROOT = Path(__file__).parent
 TOKEN = os.getenv("TG_BOT_TOKEN", "")
-LLM_KEY = os.getenv("LLM_API_KEY", "")
-LLM_BASE = os.getenv("LLM_BASE_URL", "https://api.x.ai/v1").rstrip("/")
-LLM_MODEL = os.getenv("LLM_MODEL", "grok-4.7")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 APP_URL = os.getenv("MINI_APP_URL", "").rstrip("/")
 
 
@@ -39,17 +38,22 @@ def telegram_ok(raw: str) -> bool:
 
 
 async def ask(prompt: str) -> str:
-    if not LLM_KEY:
-        raise RuntimeError("LLM_API_KEY ещё не добавлен в новый сервис")
-    body = {"model": LLM_MODEL, "temperature": 0.7, "max_tokens": 1800, "messages": [
-        {"role": "system", "content": "Ты работаешь только с Instagram @motivbom.ai. Не выдумывай статистику, тренды или содержание ролика. Не давай медицинских обещаний."},
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY ещё не добавлен в новый сервис")
+    body = {"model": ANTHROPIC_MODEL, "max_tokens": 1800,
+        "system": "Ты работаешь только с Instagram @motivbom.ai. Не выдумывай статистику, тренды или содержание ролика. Не давай медицинских обещаний.",
+        "messages": [
         {"role": "user", "content": prompt},
     ]}
     async with httpx.AsyncClient(timeout=90) as client:
-        response = await client.post(f"{LLM_BASE}/chat/completions", headers={"Authorization": f"Bearer {LLM_KEY}", "Content-Type": "application/json"}, json=body)
+        response = await client.post("https://api.anthropic.com/v1/messages", headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}, json=body)
     if response.status_code >= 400:
-        raise RuntimeError(f"AI API вернул {response.status_code}")
-    return response.json()["choices"][0]["message"]["content"].strip()
+        raise RuntimeError(f"Claude API вернул {response.status_code}")
+    content = response.json().get("content", [])
+    text = "".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
+    if not text:
+        raise RuntimeError("Claude вернул ответ без текста")
+    return text
 
 
 PROMPTS = {
@@ -84,7 +88,7 @@ async def run_agent(request: web.Request) -> web.Response:
 
 
 async def health(_: web.Request) -> web.Response:
-    return web.json_response({"ok": True, "project": "motivbom.ai-studio", "llm_configured": bool(LLM_KEY)})
+    return web.json_response({"ok": True, "project": "motivbom.ai-studio", "claude_configured": bool(ANTHROPIC_API_KEY), "model": ANTHROPIC_MODEL})
 
 
 async def menu() -> None:
