@@ -1,0 +1,14 @@
+name: Keep Render awake
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping the separate motivbom.ai service
+        run: curl --fail --silent --show-error --max-time 45 https://motivbom-ai-studio.onrender.com/health
